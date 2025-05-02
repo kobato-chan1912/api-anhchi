@@ -25,7 +25,7 @@ app.post('/api/add', async (req, res) => {
 
     // Tạo chuỗi gọi procedure theo dạng EXEC
     const paramPlaceholders = params.map((_, i) => `@param${i + 1}`).join(', ');
-    const result = await request.query(`EXEC callProcedurePost ${paramPlaceholders}`);
+    const result = await request.query(`EXEC API_POST ${paramPlaceholders}`);
 
     res.json({ msg: result.recordset?.[0]?.msg || 'Thành công' });
   } catch (err) {
@@ -48,7 +48,7 @@ app.get('/api/get', async (req, res) => {
     });
 
     const paramPlaceholders = params.map((_, i) => `@param${i + 1}`).join(', ');
-    const result = await request.query(`EXEC callProcedureGet ${paramPlaceholders}`);
+    const result = await request.query(`EXEC API_GET ${paramPlaceholders}`);
 
     const queryStr = result.recordset?.[0]?.query;
     if (!queryStr) {
