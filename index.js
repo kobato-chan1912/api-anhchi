@@ -1,70 +1,61 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const sql = require('mssql');
-require('dotenv').config()
+const sql = require('mssql/msnodesqlv8');
+require('dotenv').config();
 
 const app = express();
 app.use(bodyParser.json());
 
 const pool = new sql.ConnectionPool({
-    connectionString: process.env.CONNECTION_STRING
-  });
-  
-
-
-app.post('/api/add', async (req, res) => {
-  try {
-    const rawData = req.body.data;
-    const params = rawData.split(',').map(item => item.trim());
-
-    const request = pool.request();
-
-    // Gán động các tham số
-    params.forEach((param, index) => {
-      request.input(`param${index + 1}`, param);
-    });
-
-    // Tạo chuỗi gọi procedure theo dạng EXEC
-    const paramPlaceholders = params.map((_, i) => `@param${i + 1}`).join(', ');
-    const result = await request.query(`EXEC API_POST ${paramPlaceholders}`);
-
-    res.json({ msg: result.recordset?.[0]?.msg || 'Thành công' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: 'Lỗi server' });
-  }
+  connectionString: process.env.CONNECTION_STRING
 });
 
+let connectedPool;
 
-app.get('/api/get', async (req, res) => {
-  try {
-    const rawData = req.query.data;
-    const params = rawData.split(',').map(item => item.trim());
-
-    const request = pool.request();
-
-    // Gán động các tham số
-    params.forEach((param, index) => {
-      request.input(`param${index + 1}`, param);
-    });
-
-    const paramPlaceholders = params.map((_, i) => `@param${i + 1}`).join(', ');
-    const result = await request.query(`EXEC API_GET ${paramPlaceholders}`);
-
-    const queryStr = result.recordset?.[0]?.query;
-    if (!queryStr) {
-      return res.status(400).json({ msg: 'Không nhận được query từ procedure' });
-    }
-
-    const dataResult = await pool.request().query(queryStr);
-    res.json({ data: dataResult.recordset });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: 'Lỗi server' });
-  }
+// Kết nối SQL một lần khi server khởi động
+pool.connect().then(p => {
+  connectedPool = p;
+  console.log('Kết nối SQL thành công');
+}).catch(err => {
+  console.error('Không thể kết nối SQL:', err);
 });
 
+// Hàm format các tham số truyền vào procedure
+const buildParams = values => values.map(v => `N'${v}'`).join(', ');
+
+// Hàm xử lý gọi procedure chung
+const callProcedure = (procName, dataString, res) => {
+  if (!dataString) return res.status(400).json({ msg: 'Thiếu tham số data' });
+  if (!connectedPool) return res.status(500).json({ msg: 'SQL chưa kết nối' });
+
+  const values = dataString.split(',').map(v => v.trim());
+  const query = `EXEC ${procName} ${buildParams(values)}`;
+
+  connectedPool.request().query(query)
+    .then(result => {
+      const rows = result.recordset;
+      if (rows.length > 0 && rows[0].ThongBao) {
+        res.json({ msg: rows[0].ThongBao });
+      } else {
+        res.json(rows);
+      }
+    })
+    .catch(err => {
+      console.error('Lỗi:', err);
+      res.status(500).json({ msg: 'Lỗi server' });
+    });
+};
+
+// API GET
+app.get('/api/get', (req, res) => {
+  callProcedure('API_GET', req.query.data, res);
+});
+
+// API POST
+app.post('/api/post', (req, res) => {
+  callProcedure('API_POST', req.body.data, res);
+});
 
 app.listen(3000, () => {
-  console.log('APP IS RUNNING IN 3000 PORT -- PLEASE OPEN PORT 3000 FOR PUBLIC -- ');
+  console.log('🚀 API chạy tại PORT 3000');
 });
